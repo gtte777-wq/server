@@ -1,0 +1,17 @@
+{
+  "name": "hono-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.4.0",
+    "hono": "^4.0.9"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.1"
+  }
+}
