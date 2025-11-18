@@ -1,4 +1,38 @@
+# 1. Node.js 의존성 & 로그
 node_modules/
-.env
-.DS_Store
 npm-debug.log
+yarn-error.log
+
+# 2. 환경 변수 (보안)
+.env
+
+# 3. 시스템 파일
+.DS_Store
+Thumbs.db
+
+# ===================================
+# 🤖 AI Server (Python) 관련 무시 목록
+# ===================================
+
+# Python 가상환경 (용량 큼)
+ai-server/venv/
+ai-server/.venv/
+
+# Python 캐시 파일 (불필요)
+ai-server/__pycache__/
+*.py[cod]
+*$py.class
+
+# 🚨 대용량 모델 파일 (Github 업로드 불가 - 중요!)
+# 이 파일들은 절대 올리면 안 됩니다.
+*.pt
+*.pth
+*.h5
+*.onnx
+*.index
+*.pkl
+ai-server/models/
+
+# 데이터셋 폴더
+ai-server/datasets/
+datasets/

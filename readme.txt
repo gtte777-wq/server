@@ -1,21 +1,18 @@
-# 🎨 React Client (Frontend)
+# 🖥️ Node.js API Gateway
 
-사용자에게 보여지는 웹 대시보드입니다. (주식 차트, 뉴스, 게시판 등)
+프론트엔드(React)와 AI 서버(Python), 외부 API를 연결하는 중계 서버입니다.
 
-## 🛠️ 설치된 라이브러리 (Dependencies)
+## ✨ 주요 기능
+- **📡 RSS Aggregator:** 구글 뉴스, 매일경제 등 외부 RSS를 수집하여 JSON으로 변환 (`rss-parser`).
+- **🤖 AI Proxy:** React에서 받은 이미지 파일을 Python AI 서버(FastAPI)로 안전하게 전달.
+- **🛡️ CORS Handling:** 클라이언트와 서버 간의 통신 보안 정책 관리.
 
-### 1. 데이터 시각화 (Charts)
-- **lightweight-charts**: (TradingView 엔진) 업비트/바이낸스 스타일의 전문가용 캔들 차트 & 거래량 그래프 구현.
-- **recharts**: (보조용) 단순 라인 차트나 영역 차트 구현 시 사용.
-
-### 2. 라우팅 & 유틸리티
-- **react-router-dom**: 페이지 이동(SPA) 처리.
-- **firebase**: 게시판 데이터베이스 연동.
+## 🛠️ 기술 스택
+- **Hono:** 초경량/고속 웹 프레임워크.
+- **rss-parser:** 뉴스 데이터 크롤링 및 파싱.
 
 ## 🚀 실행 방법
-```bash
-# 의존성 설치
-npm install
 
-# 개발 서버 실행 (5173 포트)
+npm install
 npm run dev
+# (포트: 8080)
