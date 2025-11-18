@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.4.0",
-    "hono": "^4.0.9"
+    "hono": "^4.0.9",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "tsx": "^4.7.1"

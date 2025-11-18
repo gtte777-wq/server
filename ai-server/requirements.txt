@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+python-multipart
+# torch (사용하는 모델에 따라 추가)
