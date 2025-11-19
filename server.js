@@ -18,10 +18,63 @@ const parser = new Parser({
 app.use("/api/*", cors());
 
 // ==========================================
+// 🌤️ [API] 실시간 날씨 정보 (Open-Meteo)
+// ==========================================
+app.get("/api/weather", async (c) => {
+  try {
+    // 광주광역시 좌표
+    const url =
+      "https://api.open-meteo.com/v1/forecast?latitude=35.16&longitude=126.85&current_weather=true&timezone=auto";
+    const response = await fetch(url);
+    const data = await response.json();
+    const weather = data.current_weather;
+
+    // 날씨 코드 변환
+    let condition = "맑음";
+    let icon = "☀️";
+    const code = weather.weathercode;
+
+    if (code >= 1 && code <= 3) {
+      condition = "구름 조금";
+      icon = "🌤️";
+    } else if (code >= 45 && code <= 48) {
+      condition = "안개";
+      icon = "🌫️";
+    } else if (code >= 51 && code <= 67) {
+      condition = "비";
+      icon = "🌧️";
+    } else if (code >= 71 && code <= 77) {
+      condition = "눈";
+      icon = "❄️";
+    } else if (code >= 80 && code <= 82) {
+      condition = "소나기";
+      icon = "☔";
+    } else if (code >= 95) {
+      condition = "뇌우";
+      icon = "⚡";
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        temp: weather.temperature,
+        wind: weather.windspeed,
+        condition: condition,
+        icon: icon,
+        location: "광주광역시",
+      },
+    });
+  } catch (error) {
+    console.error("날씨 가져오기 실패:", error);
+    return c.json({ success: false, message: "날씨 정보 로딩 실패" }, 500);
+  }
+});
+
+// ==========================================
 // 📰 [API] 글로벌 뉴스 데이터 제공
 // ==========================================
 app.get("/api/news", async (c) => {
-  console.log("📡 글로벌 뉴스 데이터 요청 시작...");
+  console.log("📡 뉴스 데이터 요청...");
   try {
     const RSS_FEEDS = [
       {
@@ -80,58 +133,46 @@ app.get("/api/news", async (c) => {
           };
         });
       } catch (e) {
-        console.error(`❌ ${feedInfo.source} 로드 실패:`, e.message);
         return [];
       }
     });
 
     const results = await Promise.all(promises);
-    const allNews = results.flat();
-    allNews.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+    const allNews = results
+      .flat()
+      .sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
     const finalNews = allNews.map((item, index) => ({ ...item, id: index }));
 
     return c.json({ success: true, data: finalNews });
   } catch (error) {
-    console.error("❌ 서버 내부 에러:", error);
-    return c.json(
-      { success: false, message: "서버 에러: " + error.message },
-      500
-    );
+    return c.json({ success: false, message: "서버 에러" }, 500);
   }
 });
 
 // ==========================================
-// 🤖 [API] AI 분석 요청 중계 (React -> Node -> Python)
+// 🤖 [API] AI 분석 요청 중계
 // ==========================================
 app.post("/api/ai-predict", async (c) => {
-  console.log("🤖 AI 분석 요청 도착!");
+  console.log("🤖 AI 요청!");
   try {
     const body = await c.req.parseBody();
     const file = body["file"];
     const modelType = body["modelType"];
 
-    if (!file)
-      return c.json({ success: false, message: "파일이 없습니다." }, 400);
+    if (!file) return c.json({ success: false, message: "파일 없음" }, 400);
 
-    // 🚨 모델 타입에 따라 Python 주소 결정 (여기가 수정된 부분입니다!)
     let pythonUrl = "";
-    if (modelType === "muffin") {
-      pythonUrl = "http://localhost:8000/predict/muffin";
-    } else if (modelType === "rice") {
-      pythonUrl = "http://localhost:8000/predict/rice";
-    } else if (modelType === "plant") {
-      pythonUrl = "http://localhost:8000/predict/plant";
-    } else if (modelType === "face") {
-      // 👈 [NEW] 여기 추가!
-      pythonUrl = "http://localhost:8000/predict/face";
-    } else {
-      return c.json(
-        { success: false, message: "알 수 없는 모델 타입입니다." },
-        400
-      );
-    }
+    if (modelType === "muffin")
+      pythonUrl = "http://127.0.0.1:8000/predict/muffin";
+    else if (modelType === "rice")
+      pythonUrl = "http://127.0.0.1:8000/predict/rice";
+    else if (modelType === "plant")
+      pythonUrl = "http://127.0.0.1:8000/predict/plant";
+    else if (modelType === "face")
+      pythonUrl = "http://127.0.0.1:8000/predict/face";
+    else
+      return c.json({ success: false, message: "알 수 없는 모델 타입" }, 400);
 
-    // Python 서버로 파일 전송
     const formData = new FormData();
     formData.append("file", file);
 
@@ -139,19 +180,14 @@ app.post("/api/ai-predict", async (c) => {
       method: "POST",
       body: formData,
     });
-
-    if (!pythonResponse.ok) {
+    if (!pythonResponse.ok)
       throw new Error(`Python 서버 오류: ${pythonResponse.statusText}`);
-    }
 
     const aiResult = await pythonResponse.json();
     return c.json(aiResult);
   } catch (error) {
-    console.error("❌ AI 서버 연결 실패:", error);
-    return c.json(
-      { success: false, message: "AI 서버 연결 실패: " + error.message },
-      500
-    );
+    console.error("AI 서버 연결 실패:", error);
+    return c.json({ success: false, message: "AI 서버 에러" }, 500);
   }
 });
 
