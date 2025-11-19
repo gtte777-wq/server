@@ -16,3 +16,21 @@
 npm install
 npm run dev
 # (포트: 8080)
+
+pip install fastapi uvicorn
+pip install pillow torch torchvision insightface onnxruntime faiss-cpu scikit-learn opencv-python-headless
+pip install pillow
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# 1. pip 및 setuptools 최신화
+visual studio community 2026 데스크탑 C++ 컴파일러 다운로드
+pip install --upgrade pip setuptools wheel
+
+# 2. NumPy를 먼저 강제 설치 (문제의 패키지)
+pip install numpy
+
+# 3. 그 다음, 원래 설치하려던 OpenCV 재설치
+pip install opencv-python-headless
+pip install faiss-cpu
+pip install insightface
+pip install --no-cache-dir scikit-image onnxruntime faiss-cpu torch torchvision insightface opencv-python-headless
+
