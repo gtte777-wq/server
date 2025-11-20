@@ -36,3 +36,8 @@ pip install --no-cache-dir scikit-image onnxruntime faiss-cpu torch torchvision 
 
 npm install axios 
 npm install dotenv
+
+
+npm run dev
+D:\MyPowerShellPractice\server\ai-server> .\final_env\Scripts\activate
+(final_env) D:\MyPowerShellPractice\server\ai-server> python main.py
