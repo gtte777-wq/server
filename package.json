@@ -8,8 +8,10 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@hono/node-server": "^1.4.0",
-    "hono": "^4.0.9",
+    "@hono/node-server": "^1.19.6",
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "hono": "^4.10.6",
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {

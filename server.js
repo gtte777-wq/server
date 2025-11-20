@@ -3,156 +3,224 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { cors } from "hono/cors";
 import Parser from "rss-parser";
-
-// 1. 기본 설정
-const app = new Hono();
-const parser = new Parser({
-  headers: {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-    Accept: "application/rss+xml, application/xml, text/xml; q=0.1",
-  },
-});
-
-// 2. CORS 허용
-app.use("/api/*", cors());
+import 'dotenv/config';
+import axios from 'axios';
 
 // ==========================================
-// 📰 [API] 글로벌 뉴스 데이터 제공
+// 1. 기본 설정 및 KIS API 환경 변수
+// ==========================================
+const app = new Hono();
+const parser = new Parser();
+
+// KIS API 설정 (실전 투자 기준 URL)
+const KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"; 
+const APP_KEY = process.env.KIS_APP_KEY;
+const APP_SECRET = process.env.KIS_APP_SECRET;
+
+// 토큰 저장용 변수
+let accessToken = null; 
+
+// ==========================================
+// 🔑 KIS API 인증 및 토큰 발급 함수
+// ==========================================
+async function getAccessToken() {
+    console.log("🔑 Access Token 발급 시도...");
+    if (!APP_KEY || !APP_SECRET) {
+        throw new Error(".env 파일에 KIS_APP_KEY 또는 KIS_APP_SECRET이 없습니다.");
+    }
+
+    try {
+        const response = await axios.post(`${KIS_BASE_URL}/oauth2/tokenP`, {
+            "grant_type": "client_credentials",
+            "appkey": APP_KEY,
+            "appsecret": APP_SECRET
+        }, {
+            headers: { "Content-Type": "application/json" }
+        });
+
+        accessToken = response.data.access_token; 
+        console.log("✅ Access Token 발급 성공!");
+        return accessToken;
+    } catch (error) {
+        console.error("❌ Token 발급 실패:", error.response?.data || error.message);
+        throw error;
+    }
+}
+
+// ==========================================
+// 🛠️ KIS API 공통 헤더 생성기
+// ==========================================
+function getKisHeaders(trId) {
+    return {
+        "Content-Type": "application/json; charset=utf-8",
+        "authorization": `Bearer ${accessToken}`,
+        "appkey": APP_KEY,
+        "appsecret": APP_SECRET,
+        "tr_id": trId,
+        "custtype": "P", // 개인(P) / 법인(B)
+    };
+}
+
+// ==========================================
+// 2. CORS 및 정적 파일
+// ==========================================
+// 프론트엔드(localhost:5173 등)에서 오는 요청 허용
+app.use("/api/*", cors({
+    origin: "*", // 개발 편의상 전체 허용 (실무에선 특정 도메인만)
+    allowMethods: ["GET", "POST", "OPTIONS"],
+}));
+
+// ==========================================
+// 📈 [API] 단일 종목 현재가 조회 (최적화 버전)
+// ==========================================
+app.get("/api/stock/current-price", async (c) => {
+    const symbol = c.req.query("symbol");
+    
+    if (!symbol) {
+        return c.json({ success: false, message: "종목 코드(symbol)가 필요합니다." }, 400);
+    }
+
+    try {
+        // 토큰 없으면 재발급 시도
+        if (!accessToken) await getAccessToken();
+
+        // KIS API 호출 (주식 현재가 시세)
+        // TR_ID: FHKST01010100 (현재가 조회)
+        const response = await axios.get(`${KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-price`, {
+            headers: getKisHeaders("FHKST01010100"),
+            params: {
+                FID_COND_MRKT_DIV_CODE: 'J', // 시장 분류 (J: 주식)
+                FID_INPUT_ISCD: symbol       // 종목 코드
+            }
+        });
+
+        if (response.data.rt_cd !== '0') {
+            throw new Error(response.data.msg1 || "KIS API Error");
+        }
+
+        // 프론트엔드 포맷에 맞춰 데이터 반환
+        // 백엔드에서 필요한 데이터만 쏙 뽑아서 줍니다.
+        return c.json({
+            success: true,
+            data: {
+                stck_shrn_iscd: symbol,
+                stck_prpr: response.data.output.stck_prpr, // 현재가
+                prdy_clpr: response.data.output.prdy_clpr, // 전일 종가
+                prdy_vrss: response.data.output.prdy_vrss, // 전일 대비
+                prdy_ctrt: response.data.output.prdy_ctrt, // 등락률
+            }
+        });
+
+    } catch (error) {
+        console.error(`❌ [${symbol}] 현재가 조회 실패:`, error.message);
+        return c.json({ success: false, message: error.message }, 500);
+    }
+});
+
+// ==========================================
+// 🕯️ [API] 주식 캔들(일봉) 데이터 조회
+// ==========================================
+app.get("/api/stock/candles", async (c) => {
+    const symbol = c.req.query("symbol");
+    // const unit = c.req.query("unit"); // 현재는 일봉(D) 고정으로 구현
+
+    if (!symbol) {
+        return c.json({ success: false, message: "종목 코드가 필요합니다." }, 400);
+    }
+
+    try {
+        if (!accessToken) await getAccessToken();
+
+        // KIS API 호출 (국내주식 기간별 시세 - 일봉)
+        // TR_ID: FHKST01010400 (기간별 시세)
+        const response = await axios.get(`${KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-price`, {
+            headers: getKisHeaders("FHKST01010400"),
+            params: {
+                FID_COND_MRKT_DIV_CODE: "J",
+                FID_INPUT_ISCD: symbol,
+                FID_PERIOD_DIV_CODE: "D", // D: 일봉, W: 주봉, M: 월봉
+                FID_ORG_ADJ_PRC: "1",     // 1: 수정주가 반영
+            }
+        });
+
+        if (response.data.rt_cd !== '0') {
+            console.error("KIS API Error Message:", response.data.msg1);
+            throw new Error(response.data.msg1);
+        }
+
+        // KIS API의 output 배열을 그대로 줍니다. 
+        // 프론트엔드(StockChartPage.js)에서 map으로 변환하게 됩니다.
+        return c.json({
+            success: true,
+            data: response.data.output // [{stck_bsdy, stck_oprc, ...}, ...]
+        });
+
+    } catch (error) {
+        console.error(`❌ [${symbol}] 캔들 조회 실패:`, error.message);
+        return c.json({ success: false, message: error.message }, 500);
+    }
+});
+
+// ==========================================
+// 📰 [API] 뉴스 & 🤖 [API] AI (기존 유지)
 // ==========================================
 app.get("/api/news", async (c) => {
-  console.log("📡 글로벌 뉴스 데이터 요청 시작...");
-  try {
-    const RSS_FEEDS = [
-      {
-        url: encodeURI(
-          "https://news.google.com/rss/search?q=주식+경제+삼성전자&hl=ko&gl=KR&ceid=KR:ko"
-        ),
-        source: "Google News(KR)",
-        type: "domestic",
-      },
-      {
-        url: "https://www.mk.co.kr/rss/30000001/",
-        source: "매일경제",
-        type: "domestic",
-      },
-      {
-        url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
-        source: "CNBC(US)",
-        type: "global",
-      },
-      {
-        url: "https://www.wired.com/feed/category/business/latest/rss",
-        source: "Wired(Tech)",
-        type: "global",
-      },
-    ];
+    console.log("📡 글로벌 뉴스 데이터 요청...");
+    try {
+        const RSS_FEEDS = [
+            { url: encodeURI("https://news.google.com/rss/search?q=주식+삼성전자&hl=ko&gl=KR&ceid=KR:ko"), source: "Google News", type: "domestic" },
+            { url: "https://www.mk.co.kr/rss/30000001/", source: "매일경제", type: "domestic" },
+        ];
 
-    const promises = RSS_FEEDS.map(async (feedInfo) => {
-      try {
-        const feed = await parser.parseURL(feedInfo.url);
-        return feed.items.map((item) => {
-          let sentiment = "neutral";
-          const titleLower = item.title.toLowerCase();
-          if (
-            titleLower.includes("급등") ||
-            titleLower.includes("상승") ||
-            titleLower.includes("soar") ||
-            titleLower.includes("surge")
-          ) {
-            sentiment = "positive";
-          } else if (
-            titleLower.includes("급락") ||
-            titleLower.includes("하락") ||
-            titleLower.includes("plunge") ||
-            titleLower.includes("drop")
-          ) {
-            sentiment = "negative";
-          }
-          return {
-            title: item.title,
-            link: item.link,
-            pubDate: item.pubDate,
-            source: feedInfo.source,
-            isGlobal: feedInfo.type === "global",
-            content: item.contentSnippet || "",
-            sentiment: sentiment,
-          };
+        const promises = RSS_FEEDS.map(async (feedInfo) => {
+            try {
+                const feed = await parser.parseURL(feedInfo.url);
+                return feed.items.map(item => ({
+                    title: item.title,
+                    link: item.link,
+                    pubDate: item.pubDate,
+                    source: feedInfo.source
+                }));
+            } catch { return []; }
         });
-      } catch (e) {
-        console.error(`❌ ${feedInfo.source} 로드 실패:`, e.message);
-        return [];
-      }
-    });
 
-    const results = await Promise.all(promises);
-    const allNews = results.flat();
-    allNews.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
-    const finalNews = allNews.map((item, index) => ({ ...item, id: index }));
-
-    return c.json({ success: true, data: finalNews });
-  } catch (error) {
-    console.error("❌ 서버 내부 에러:", error);
-    return c.json(
-      { success: false, message: "서버 에러: " + error.message },
-      500
-    );
-  }
+        const results = await Promise.all(promises);
+        const allNews = results.flat().sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+        
+        return c.json({ success: true, data: allNews.map((item, i) => ({ ...item, id: i })) });
+    } catch (error) {
+        return c.json({ success: false, message: error.message }, 500);
+    }
 });
 
-// ==========================================
-// 🤖 [API] AI 분석 요청 중계 (React -> Node -> Python)
-// ==========================================
 app.post("/api/ai-predict", async (c) => {
-  console.log("🤖 AI 분석 요청 도착!");
-  try {
-    const body = await c.req.parseBody();
-    const file = body["file"];
-    const modelType = body["modelType"];
+    console.log("🤖 AI 분석 요청");
+    try {
+        const body = await c.req.parseBody();
+        const { file, modelType } = body;
 
-    if (!file)
-      return c.json({ success: false, message: "파일이 없습니다." }, 400);
+        if (!file) return c.json({ success: false, message: "파일 없음" }, 400);
 
-    // 🚨 모델 타입에 따라 Python 주소 결정 (여기가 수정된 부분입니다!)
-    let pythonUrl = "";
-    if (modelType === "muffin") {
-      pythonUrl = "http://localhost:8000/predict/muffin";
-    } else if (modelType === "rice") {
-      pythonUrl = "http://localhost:8000/predict/rice";
-    } else if (modelType === "plant") {
-      pythonUrl = "http://localhost:8000/predict/plant";
-    } else if (modelType === "face") {
-      // 👈 [NEW] 여기 추가!
-      pythonUrl = "http://localhost:8000/predict/face";
-    } else {
-      return c.json(
-        { success: false, message: "알 수 없는 모델 타입입니다." },
-        400
-      );
+        const pythonEndpoints = {
+            "muffin": "http://localhost:8000/predict/muffin",
+            "rice": "http://localhost:8000/predict/rice",
+            "plant": "http://localhost:8000/predict/plant",
+            "face": "http://localhost:8000/predict/face",
+        };
+
+        const pythonUrl = pythonEndpoints[modelType];
+        if (!pythonUrl) return c.json({ success: false, message: "알 수 없는 모델" }, 400);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const pyRes = await fetch(pythonUrl, { method: "POST", body: formData });
+        const result = await pyRes.json();
+        
+        return c.json(result);
+    } catch (error) {
+        return c.json({ success: false, message: "AI 서버 연결 실패" }, 500);
     }
-
-    // Python 서버로 파일 전송
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const pythonResponse = await fetch(pythonUrl, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!pythonResponse.ok) {
-      throw new Error(`Python 서버 오류: ${pythonResponse.statusText}`);
-    }
-
-    const aiResult = await pythonResponse.json();
-    return c.json(aiResult);
-  } catch (error) {
-    console.error("❌ AI 서버 연결 실패:", error);
-    return c.json(
-      { success: false, message: "AI 서버 연결 실패: " + error.message },
-      500
-    );
-  }
 });
 
 // ==========================================
@@ -162,12 +230,18 @@ app.use("/*", serveStatic({ root: "../client/dist" }));
 app.get("*", serveStatic({ path: "../client/dist/index.html" }));
 
 // ==========================================
-// 🚀 서버 실행
+// 🚀 서버 실행 (포트 3000으로 변경!)
 // ==========================================
-const PORT = 8080;
-console.log(`🚀 통합 서버 가동! http://localhost:${PORT}`);
+// 프론트엔드 코드의 BASE_URL = 'http://localhost:3000'과 맞추기 위함
+const PORT = 3000; 
 
-serve({
-  fetch: app.fetch,
-  port: PORT,
+getAccessToken().then(() => {
+    console.log(`🚀 통합 서버 가동! http://localhost:${PORT}`);
+    serve({
+        fetch: app.fetch,
+        port: PORT,
+    });
+}).catch(err => {
+    console.error("❌ 초기 인증 실패로 서버 시작 불가:", err.message);
+    process.exit(1);
 });

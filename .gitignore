@@ -15,8 +15,8 @@ Thumbs.db
 # ===================================
 
 # Python 가상환경 (용량 큼)
+ai-server/final_env/
 ai-server/venv/
-ai-server/.venv/
 
 # Python 캐시 파일 (불필요)
 ai-server/__pycache__/
@@ -36,3 +36,5 @@ ai-server/models/
 # 데이터셋 폴더
 ai-server/datasets/
 datasets/
+node_modules
+node_modules

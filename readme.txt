@@ -34,3 +34,5 @@ pip install faiss-cpu
 pip install insightface
 pip install --no-cache-dir scikit-image onnxruntime faiss-cpu torch torchvision insightface opencv-python-headless
 
+npm install axios 
+npm install dotenv
